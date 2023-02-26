@@ -18,6 +18,12 @@ pub trait BackdropStrategy {
 /// This is done by implementing `Deref` and `DerefMut`
 /// so most methods available for `T` are also immediately available for `Backdrop<T>`.
 /// `Backdrop<T>` also implements many common traits whenever `T` implements these.
+///
+/// # Restrictions
+///
+/// There are only two, highly logical, restrictions on the kinds of `T` that a `Backdrop<T>` can wrap:
+/// 1. `T` needs to be Send. Many strategies rely on moving the `T` to a different thread, to be dropped there.
+/// 2. `T` is not allowed to internally contain non-static references. Many strategies delay destruction to a later point in the future, when those references might have become invalid. (Moving to another thread also 'delays to the future' because code on that thread will not run in lockstep with our current thread.)
 #[repr(transparent)]
 pub struct Backdrop<T: Send + 'static, S: BackdropStrategy> {
     val: MaybeUninit<T>,
@@ -25,7 +31,7 @@ pub struct Backdrop<T: Send + 'static, S: BackdropStrategy> {
 }
 
 impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
-    /// Construct a new Backdrop<T> from any T.
+    /// Construct a new Backdrop<T> from any T. This is a zero-cost operation.
     ///
     /// From now on, T will no longer be dropped normally,
     /// but instead it will be dropped using the implementation of the given [`BackdropStrategy`].
@@ -40,6 +46,8 @@ impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
     /// Turns a Backdrop<T> back into a normal T.
     /// This undoes the effect of Backdrop.
     /// The resulting T will be dropped again using normal rules.
+    ///
+    /// This is a zero-cost operation.
     ///
     /// This is an associated function, so call it using fully-qualified syntax.
     #[inline]
@@ -157,6 +165,18 @@ where
     }
 }
 
+/// Converting between a T and a Backdrop<T, S> is a zero-cost operation
+///
+/// c.f. [`Backdrop::new`]
+impl<T, S> From<T> for Backdrop<T, S>
+    where
+    T: Send + 'static,
+    S: BackdropStrategy,
+{
+    fn from(val: T) -> Self {
+        Backdrop::new(val)
+    }
+}
 
 /// Strategy which drops the contained value normally.
 ///
