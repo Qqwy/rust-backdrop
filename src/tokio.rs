@@ -13,9 +13,9 @@ use crate::{Backdrop, BackdropStrategy};
 /// Note that if dropping your value takes a very long time, you might be better off
 /// using [`TokioBlockingTaskStrategy`] instead. Benchmark!
 pub struct TokioTaskStrategy();
-impl BackdropStrategy for TokioTaskStrategy {
+impl<T: Send + 'static> BackdropStrategy<T> for TokioTaskStrategy {
     #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
+    fn execute(droppable: T) {
         tokio::task::spawn(async move {
             core::mem::drop(droppable);
         });
@@ -36,9 +36,9 @@ pub type TokioTaskBackdrop<T> = Backdrop<T, TokioTaskStrategy>;
 ///
 /// Benchmark to find out which approach suits your scenario better!
 pub struct TokioBlockingTaskStrategy();
-impl BackdropStrategy for TokioBlockingTaskStrategy {
+impl<T: Send + 'static> BackdropStrategy<T> for TokioBlockingTaskStrategy {
     #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
+    fn execute(droppable: T) {
         tokio::task::spawn_blocking(move || core::mem::drop(droppable));
     }
 }

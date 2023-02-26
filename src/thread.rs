@@ -12,9 +12,9 @@ use crate::{Backdrop, BackdropStrategy};
 /// This is conceptually very simple, but relatively slow since a new thread is spawned every time.
 pub struct ThreadStrategy();
 
-impl BackdropStrategy for ThreadStrategy {
+impl<T: Send + 'static> BackdropStrategy<T> for ThreadStrategy {
     #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
+    fn execute(droppable: T) {
         std::thread::spawn(|| {
             core::mem::drop(droppable);
         });
@@ -64,9 +64,9 @@ lazy_static! {
 /// But be aware that tools like e.g. Miri complain about this.
 pub struct TrashThreadStrategy();
 
-impl BackdropStrategy for TrashThreadStrategy {
+impl<T: Send + 'static> BackdropStrategy<T> for TrashThreadStrategy {
     #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
+    fn execute(droppable: T) {
         let handle = &TRASH_THREAD_HANDLE;
         let _ = handle.0.send(Box::new(droppable));
     }

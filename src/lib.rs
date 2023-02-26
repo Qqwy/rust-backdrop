@@ -23,8 +23,21 @@ use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::mem::ManuallyDrop;
 
-pub trait BackdropStrategy {
-    fn execute<T: Send + 'static>(droppable: T);
+/// The strategy to use to drop `T`.
+///
+/// Most implementations of this trait place additional requirements on `T`.
+/// For instance, all strategies that move T to a separate thread to be dropped there
+/// introduce a `T: Send + 'static` bound.
+///
+pub trait BackdropStrategy<T> {
+    /// Called whenever `T` should be dropped.
+    ///
+    /// The trivial implementation (and indeed, [`TrivialStrategy`] is implemented this way)
+    /// is to do nothing. Then `T` will just directly be dropped right here, right now.
+    ///
+    /// But obviously that is not very exciting/helpful.
+    /// Most implementations move the `T` to somewhere else somehow, and then it will be dropped there.
+    fn execute(droppable: T);
 }
 
 /// Wrapper to drop any value at a later time, such as in a background thread.
@@ -43,12 +56,12 @@ pub trait BackdropStrategy {
 /// 1. `T` needs to be Send. Many strategies rely on moving the `T` to a different thread, to be dropped there.
 /// 2. `T` is not allowed to internally contain non-static references. Many strategies delay destruction to a later point in the future, when those references might have become invalid. (Moving to another thread also 'delays to the future' because code on that thread will not run in lockstep with our current thread.)
 #[repr(transparent)]
-pub struct Backdrop<T: Send + 'static, S: BackdropStrategy> {
+pub struct Backdrop<T, S: BackdropStrategy<T>> {
     val: ManuallyDrop<T>,
     _marker: PhantomData<S>,
 }
 
-impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
+impl<T, Strategy: BackdropStrategy<T>> Backdrop<T, Strategy> {
     /// Construct a new [`Backdrop<T>`] from any T. This is a zero-cost operation.
     ///
     /// From now on, T will no longer be dropped normally,
@@ -80,7 +93,7 @@ impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
 }
 
 /// This is where the magic happens: Instead of dropping `T` normally, we run [`Strategy::execute`](BackdropStrategy::execute) on it.
-impl<T: Send + 'static, Strategy: BackdropStrategy> Drop for Backdrop<T, Strategy> {
+impl<T, Strategy: BackdropStrategy<T>> Drop for Backdrop<T, Strategy> {
     #[inline]
     fn drop(&mut self) {
         // SAFETY: self.val is not used again after this call
@@ -90,7 +103,7 @@ impl<T: Send + 'static, Strategy: BackdropStrategy> Drop for Backdrop<T, Strateg
     }
 }
 
-impl<T: Send + 'static, S: BackdropStrategy> core::ops::Deref for Backdrop<T, S> {
+impl<T, S: BackdropStrategy<T>> core::ops::Deref for Backdrop<T, S> {
     type Target = T;
     #[inline]
     fn deref(&self) -> &T {
@@ -99,7 +112,7 @@ impl<T: Send + 'static, S: BackdropStrategy> core::ops::Deref for Backdrop<T, S>
     }
 }
 
-impl<T: Send + 'static, S: BackdropStrategy> DerefMut for Backdrop<T, S> {
+impl<T, S: BackdropStrategy<T>> DerefMut for Backdrop<T, S> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY: self.1 is filled with an initialized value on construction
@@ -109,8 +122,7 @@ impl<T: Send + 'static, S: BackdropStrategy> DerefMut for Backdrop<T, S> {
 
 impl<T: core::fmt::Debug, S> core::fmt::Debug for Backdrop<T, S>
     where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Debug::fmt(&**self, f)
@@ -119,8 +131,7 @@ impl<T: core::fmt::Debug, S> core::fmt::Debug for Backdrop<T, S>
 
 impl<T: core::fmt::Display, S> core::fmt::Display for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Display::fmt(&**self, f)
@@ -129,8 +140,7 @@ where
 
 impl<T: Clone, S> Clone for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn clone(&self) -> Self {
         Self::new(self.deref().clone())
@@ -139,8 +149,7 @@ where
 
 impl<T: core::cmp::PartialEq, S> core::cmp::PartialEq for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn eq(&self, other: &Self) -> bool {
         self.deref().eq(other.deref())
@@ -149,14 +158,12 @@ where
 
 impl<T: core::cmp::Eq, S> core::cmp::Eq for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 { }
 
 impl<T: core::cmp::PartialOrd, S> core::cmp::PartialOrd for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.deref().partial_cmp(other.deref())
@@ -165,8 +172,7 @@ where
 
 impl<T: core::cmp::Ord, S> core::cmp::Ord for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.deref().cmp(other.deref())
@@ -175,8 +181,7 @@ where
 
 impl<T: core::hash::Hash, S> core::hash::Hash for Backdrop<T, S>
 where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
@@ -188,8 +193,7 @@ where
 /// c.f. [`Backdrop::new`]
 impl<T, S> From<T> for Backdrop<T, S>
     where
-    T: Send + 'static,
-    S: BackdropStrategy,
+    S: BackdropStrategy<T>,
 {
     fn from(val: T) -> Self {
         Backdrop::new(val)
@@ -204,9 +208,9 @@ impl<T, S> From<T> for Backdrop<T, S>
 /// in a benchmark, without having to completely alter the structure of your code.
 pub struct TrivialStrategy();
 
-impl BackdropStrategy for TrivialStrategy {
+impl<T> BackdropStrategy<T> for TrivialStrategy {
     #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
+    fn execute(droppable: T) {
         core::mem::drop(droppable)
     }
 }
