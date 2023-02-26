@@ -1,3 +1,6 @@
+#![feature(doc_auto_cfg)]
+
+#[cfg(feature = "std")]
 pub mod thread;
 #[cfg(feature = "tokio")]
 pub mod tokio;
@@ -184,16 +187,16 @@ impl<T, S> From<T> for Backdrop<T, S>
 ///
 /// Its main purpose is to be able to easily test the advantage of another strategy
 /// in a benchmark, without having to completely alter the structure of your code.
-pub struct FakeStrategy();
+pub struct TrivialStrategy();
 
-impl BackdropStrategy for FakeStrategy {
+impl BackdropStrategy for TrivialStrategy {
     #[inline]
     fn execute<T: Send + 'static>(droppable: T) {
         core::mem::drop(droppable)
     }
 }
 
-pub type FakeBackdrop<T> = Backdrop<T, FakeStrategy>;
+pub type TrivialBackdrop<T> = Backdrop<T, TrivialStrategy>;
 
 
 fn time(name: &'static str, f: impl FnOnce()) {
@@ -221,7 +224,7 @@ fn main() {
     });
 
     lazy_static::initialize(&crate::thread::TRASH_THREAD_HANDLE);
-    let backdropped: FakeBackdrop<_> = Backdrop::new(boxed.clone());
+    let backdropped: TrivialBackdrop<_> = Backdrop::new(boxed.clone());
     time("fake backdrop", move || {
         assert_eq!(backdropped.len(), LEN);
         // Destructor runs here

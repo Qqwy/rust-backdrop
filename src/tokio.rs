@@ -1,3 +1,4 @@
+//! The contents of this module are only available when the `tokio` feature is enabled.
 use crate::{Backdrop, BackdropStrategy};
 
 /// Strategy which spawns a new tokio task which drops the contained value.
