@@ -218,3 +218,19 @@ impl<T> BackdropStrategy<T> for TrivialStrategy {
 pub type TrivialBackdrop<T> = Backdrop<T, TrivialStrategy>;
 
 
+
+/// Strategy which will leak the contained value rather than dropping it.
+///
+/// This is not normally useful, except for testing what the overhead is
+/// of whatever code is surrounding your drop glue.
+pub struct LeakStrategy();
+
+impl<T> BackdropStrategy<T> for LeakStrategy {
+    #[inline]
+    fn execute(droppable: T) {
+        core::mem::forget(droppable)
+    }
+}
+
+pub type LeakBackdrop<T> = Backdrop<T, LeakStrategy>;
+

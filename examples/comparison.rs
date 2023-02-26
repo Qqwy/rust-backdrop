@@ -24,7 +24,6 @@ fn main() {
         // Destructor runs here
     });
 
-    lazy_static::initialize(&crate::thread::TRASH_THREAD_HANDLE);
     let backdropped: TrivialBackdrop<_> = Backdrop::new(boxed.clone());
     time("fake backdrop", move || {
         assert_eq!(backdropped.len(), LEN);
@@ -37,10 +36,12 @@ fn main() {
         // Destructor runs here
     });
 
-    let backdropped: thread::TrashThreadBackdrop<_> = Backdrop::new(boxed.clone());
-    time("trash thread backdrop", move || {
-        assert_eq!(backdropped.len(), LEN);
-        // Destructor runs here
+    TrashThreadStrategy::with_trash_thread(||{
+        let backdropped: thread::TrashThreadBackdrop<_> = Backdrop::new(boxed.clone());
+        time("trash thread backdrop", move || {
+            assert_eq!(backdropped.len(), LEN);
+            // Destructor runs here
+        });
     });
 
     #[cfg(miri)]
