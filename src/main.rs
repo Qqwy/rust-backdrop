@@ -6,11 +6,10 @@ pub trait BackdropStrategy {
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct Backdrop<T: Send + 'static, S: BackdropStrategy>{
+pub struct Backdrop<T: Send + 'static, S: BackdropStrategy> {
     val: MaybeUninit<T>,
     _marker: PhantomData<S>,
 }
-
 
 impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
     #[inline]
@@ -47,7 +46,7 @@ impl<T: Send + 'static, S: BackdropStrategy> core::ops::Deref for Backdrop<T, S>
     #[inline]
     fn deref(&self) -> &T {
         // SAFETY: self.1 is filled with an initialized value on construction
-        unsafe{ self.val.assume_init_ref() }
+        unsafe { self.val.assume_init_ref() }
     }
 }
 
@@ -55,7 +54,7 @@ impl<T: Send + 'static, S: BackdropStrategy> core::ops::DerefMut for Backdrop<T,
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY: self.1 is filled with an initialized value on construction
-        unsafe{ self.val.assume_init_mut() }
+        unsafe { self.val.assume_init_mut() }
     }
 }
 
@@ -84,9 +83,11 @@ pub struct TrashThreadHandle(std::sync::mpsc::SyncSender<Box<dyn Send>>);
 use lazy_static::lazy_static;
 lazy_static! {
     pub static ref TRASH_THREAD_HANDLE: TrashThreadHandle = {
-        let (send,recv) = std::sync::mpsc::sync_channel(10);
-        std::thread::spawn(move || for droppable in recv {
-            core::mem::drop(droppable)
+        let (send, recv) = std::sync::mpsc::sync_channel(10);
+        std::thread::spawn(move || {
+            for droppable in recv {
+                core::mem::drop(droppable)
+            }
         });
         TrashThreadHandle(send)
     };
@@ -131,7 +132,6 @@ impl BackdropStrategy for FakeStrategy {
 
 pub type FakeBackdrop<T> = Backdrop<T, FakeStrategy>;
 
-
 /// Strategy which spawns a new tokio task which drops the contained value.
 ///
 /// This only works within the context of a Tokio runtime.
@@ -170,9 +170,7 @@ pub struct TokioBlockingTaskStrategy();
 impl BackdropStrategy for TokioBlockingTaskStrategy {
     #[inline]
     fn execute<T: Send + 'static>(droppable: T) {
-        tokio::task::spawn_blocking(move ||{
-            core::mem::drop(droppable)
-        });
+        tokio::task::spawn_blocking(move || core::mem::drop(droppable));
     }
 }
 
