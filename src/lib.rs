@@ -1,12 +1,27 @@
+#![no_std]
 #![feature(doc_auto_cfg)]
 
 #[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(feature = "std")]
 pub mod thread;
+#[cfg(feature = "std")]
+#[doc(inline)]
+pub use thread::{ThreadBackdrop, TrashThreadBackdrop, ThreadStrategy, TrashThreadStrategy};
+
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
-use core::{marker::PhantomData, mem::MaybeUninit};
+#[cfg(feature = "tokio")]
+#[doc(inline)]
+pub use crate::tokio::{TokioTaskBackdrop, TokioBlockingTaskBackdrop, TokioTaskStrategy, TokioBlockingTaskStrategy};
+
+
+
+use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
+use core::mem::ManuallyDrop;
 
 pub trait BackdropStrategy {
     fn execute<T: Send + 'static>(droppable: T);
@@ -18,7 +33,7 @@ pub trait BackdropStrategy {
 /// As such, it has zero memory overhead.
 ///
 /// Besides altering how `T` is dropped, a `Backdrop<T>` behaves as much as possible as a `T`.
-/// This is done by implementing `Deref` and `DerefMut`
+/// This is done by implementing [`Deref`] and [`DerefMut`]
 /// so most methods available for `T` are also immediately available for `Backdrop<T>`.
 /// `Backdrop<T>` also implements many common traits whenever `T` implements these.
 ///
@@ -29,24 +44,24 @@ pub trait BackdropStrategy {
 /// 2. `T` is not allowed to internally contain non-static references. Many strategies delay destruction to a later point in the future, when those references might have become invalid. (Moving to another thread also 'delays to the future' because code on that thread will not run in lockstep with our current thread.)
 #[repr(transparent)]
 pub struct Backdrop<T: Send + 'static, S: BackdropStrategy> {
-    val: MaybeUninit<T>,
+    val: ManuallyDrop<T>,
     _marker: PhantomData<S>,
 }
 
 impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
-    /// Construct a new Backdrop<T> from any T. This is a zero-cost operation.
+    /// Construct a new [`Backdrop<T>`] from any T. This is a zero-cost operation.
     ///
     /// From now on, T will no longer be dropped normally,
     /// but instead it will be dropped using the implementation of the given [`BackdropStrategy`].
     #[inline]
     pub fn new(val: T) -> Self {
         Self {
-            val: MaybeUninit::new(val),
+            val: ManuallyDrop::new(val),
             _marker: PhantomData,
         }
     }
 
-    /// Turns a Backdrop<T> back into a normal T.
+    /// Turns a [`Backdrop<T>`] back into a normal T.
     /// This undoes the effect of Backdrop.
     /// The resulting T will be dropped again using normal rules.
     ///
@@ -55,12 +70,12 @@ impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
     /// This is an associated function, so call it using fully-qualified syntax.
     #[inline]
     pub fn into_inner(mut this: Self) -> T {
-        // SAFETY: self.1 is filled with an initialized value on construction
-        let inner = core::mem::replace(&mut this.val, MaybeUninit::uninit());
-        let inner = unsafe { inner.assume_init() };
-        // Make sure we do not try to clean up uninitialized memory:
-        core::mem::forget(this);
-        inner
+        // SAFETY: we forget the container after `this.val` is taken out.
+        unsafe {
+            let inner = ManuallyDrop::take(&mut this.val);
+            core::mem::forget(this);
+            inner
+        }
     }
 }
 
@@ -68,9 +83,9 @@ impl<T: Send + 'static, Strategy: BackdropStrategy> Backdrop<T, Strategy> {
 impl<T: Send + 'static, Strategy: BackdropStrategy> Drop for Backdrop<T, Strategy> {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: self.1 is filled with an initialized value on construction
-        let inner = core::mem::replace(&mut self.val, MaybeUninit::uninit());
-        let inner = unsafe { inner.assume_init() };
+        // SAFETY: self.val is not used again after this call
+        // and since self is already being dropped, no further cleanup is necessary
+        let inner = unsafe { ManuallyDrop::take(&mut self.val)};
         Strategy::execute(inner)
     }
 }
@@ -80,7 +95,7 @@ impl<T: Send + 'static, S: BackdropStrategy> core::ops::Deref for Backdrop<T, S>
     #[inline]
     fn deref(&self) -> &T {
         // SAFETY: self.1 is filled with an initialized value on construction
-        unsafe { self.val.assume_init_ref() }
+        self.val.deref()
     }
 }
 
@@ -88,7 +103,7 @@ impl<T: Send + 'static, S: BackdropStrategy> DerefMut for Backdrop<T, S> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY: self.1 is filled with an initialized value on construction
-        unsafe { self.val.assume_init_mut() }
+        self.val.deref_mut()
     }
 }
 
@@ -199,82 +214,3 @@ impl BackdropStrategy for TrivialStrategy {
 pub type TrivialBackdrop<T> = Backdrop<T, TrivialStrategy>;
 
 
-fn time(name: &'static str, f: impl FnOnce()) {
-    let start = std::time::Instant::now();
-    f();
-    let end = std::time::Instant::now();
-    println!("{name}, took {:?}", end.duration_since(start));
-}
-
-const LEN: usize = 5_000_000;
-
-fn setup() -> Box<[Box<str>]> {
-    (0..LEN)
-        .map(|x| x.to_string().into_boxed_str())
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
-}
-
-fn main() {
-    let boxed = setup();
-    let not_backdropped = boxed.clone();
-    time("none", move || {
-        assert_eq!(not_backdropped.len(), LEN);
-        // Destructor runs here
-    });
-
-    lazy_static::initialize(&crate::thread::TRASH_THREAD_HANDLE);
-    let backdropped: TrivialBackdrop<_> = Backdrop::new(boxed.clone());
-    time("fake backdrop", move || {
-        assert_eq!(backdropped.len(), LEN);
-        // Destructor runs here
-    });
-
-    let backdropped: thread::ThreadBackdrop<_> = Backdrop::new(boxed.clone());
-    time("thread backdrop", move || {
-        assert_eq!(backdropped.len(), LEN);
-        // Destructor runs here
-    });
-
-    let backdropped: thread::TrashThreadBackdrop<_> = Backdrop::new(boxed.clone());
-    time("trash thread backdrop", move || {
-        assert_eq!(backdropped.len(), LEN);
-        // Destructor runs here
-    });
-
-    ::tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let backdropped: crate::tokio::TokioTaskBackdrop<_> = Backdrop::new(boxed.clone());
-            time("tokio task (multithread runner)", move || {
-                assert_eq!(backdropped.len(), LEN);
-                // Destructor runs here
-            });
-
-            let backdropped: crate::tokio::TokioBlockingTaskBackdrop<_> = Backdrop::new(boxed.clone());
-            time("tokio blocking task (multithread runner)", move || {
-                assert_eq!(backdropped.len(), LEN);
-                // Destructor runs here
-            });
-        });
-
-    ::tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let backdropped: crate::tokio::TokioTaskBackdrop<_> = Backdrop::new(setup());
-            time("tokio task (current thread runner)", move || {
-                assert_eq!(backdropped.len(), LEN);
-                // Destructor runs here
-            });
-
-            let backdropped: crate::tokio::TokioBlockingTaskBackdrop<_> = Backdrop::new(setup());
-            time("tokio blocking task (current thread runner)", move || {
-                assert_eq!(backdropped.len(), LEN);
-                // Destructor runs here
-            });
-        });
-}

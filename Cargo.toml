@@ -5,6 +5,9 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "backdrop"
+
 [dependencies]
 lazy_static = "1.4.0"
 tokio = { version = "1.25.0", features = ["sync", "rt", "full"], optional = true}

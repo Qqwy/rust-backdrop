@@ -1,3 +1,8 @@
+// While the crate is no_std
+// this module is not; it depends on std::thread
+extern crate std;
+use std::boxed::Box;
+
 use crate::{Backdrop, BackdropStrategy};
 
 /// Strategy which drops the contained value in a background thread.
@@ -20,7 +25,7 @@ pub type ThreadBackdrop<T> = Backdrop<T, ThreadStrategy>;
 
 /// Handle that can be used to send trash to the 'trash thread' that runs in the background for the [`TrashThreadStrategy`].
 ///
-/// Only the global [`static@TRASH_THREAD_HANDLE`] strategy is used.
+/// Only the global [`static@TRASH_THREAD_HANDLE`] thread is used.
 pub struct TrashThreadHandle(std::sync::mpsc::SyncSender<Box<dyn Send>>);
 use lazy_static::lazy_static;
 lazy_static! {
@@ -53,6 +58,10 @@ lazy_static! {
 /// Sending is done using a [`std::sync::mpsc::sync_channel`].
 /// In the current implementation, there are 10 slots available in the channel
 /// before a caller thread would block.
+///
+/// Also note that this global, detached, thread, will not be joined/cleaned up when your program exits.
+/// This is probably fine, though it might mean that a few final destructors are not run.
+/// But be aware that tools like e.g. Miri complain about this.
 pub struct TrashThreadStrategy();
 
 impl BackdropStrategy for TrashThreadStrategy {
