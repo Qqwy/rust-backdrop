@@ -1,3 +1,7 @@
+pub mod thread;
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 use core::{marker::PhantomData, mem::MaybeUninit};
 use core::ops::{Deref, DerefMut};
 
@@ -128,7 +132,7 @@ where
     T: Send + 'static,
     S: BackdropStrategy,
 {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         self.deref().partial_cmp(other.deref())
     }
 }
@@ -138,7 +142,7 @@ where
     T: Send + 'static,
     S: BackdropStrategy,
 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.deref().cmp(other.deref())
     }
 }
@@ -148,75 +152,11 @@ where
     T: Send + 'static,
     S: BackdropStrategy,
 {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.deref().hash(state)
     }
 }
 
-/// Strategy which drops the contained value in a background thread.
-///
-/// A new thread is spawned (using [`std::thread::spawn`])
-/// for every dropped value.
-/// This is conceptually very simple, but relatively slow since a new thread is spawned every time.
-pub struct ThreadStrategy();
-
-impl BackdropStrategy for ThreadStrategy {
-    #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
-        std::thread::spawn(|| {
-            core::mem::drop(droppable);
-        });
-    }
-}
-
-pub type ThreadBackdrop<T> = Backdrop<T, ThreadStrategy>;
-
-/// Handle that can be used to send trash to the 'trash thread' that runs in the background for the [`TrashThreadStrategy`].
-///
-/// Only the global [`static@TRASH_THREAD_HANDLE`] strategy is used.
-pub struct TrashThreadHandle(std::sync::mpsc::SyncSender<Box<dyn Send>>);
-use lazy_static::lazy_static;
-lazy_static! {
-    /// The global handle used by the [`TrashThreadStrategy`].
-    ///
-    /// This trash thread is a global thread that is started using [`mod@lazy_static`].
-    ///
-    /// If you use this strategy, you probably want to control when the thread
-    /// is started using [`lazy_static::initialize(&TRASH_THREAD_HANDLE)`](lazy_static::initialize)
-    /// (If you do not, it is started when it is used for the first time,
-    /// meaning the very first drop will be slower.)
-    static ref TRASH_THREAD_HANDLE: TrashThreadHandle = {
-        let (send, recv) = std::sync::mpsc::sync_channel(10);
-        std::thread::spawn(move || {
-            for droppable in recv {
-                core::mem::drop(droppable)
-            }
-        });
-        TrashThreadHandle(send)
-    };
-}
-
-/// Strategy which sends any to-be-dropped values to a dedicated 'trash thread'
-///
-/// This trash thread is a global thread that is started using [`mod@lazy_static`].
-/// You probably want to control when it is started using [`lazy_static::initialize(&TRASH_THREAD_HANDLE)`]
-/// (If you do not, it is started when it is used for the first time,
-/// meaning the very first drop will be slower.)
-///
-/// Sending is done using a [`std::sync::mpsc::sync_channel`].
-/// In the current implementation, there are 10 slots available in the channel
-/// before a caller thread would block.
-pub struct TrashThreadStrategy();
-
-impl BackdropStrategy for TrashThreadStrategy {
-    #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
-        let handle = &TRASH_THREAD_HANDLE;
-        let _ = handle.0.send(Box::new(droppable));
-    }
-}
-
-pub type TrashThreadBackdrop<T> = Backdrop<T, TrashThreadStrategy>;
 
 /// Strategy which drops the contained value normally.
 ///
@@ -235,49 +175,6 @@ impl BackdropStrategy for FakeStrategy {
 
 pub type FakeBackdrop<T> = Backdrop<T, FakeStrategy>;
 
-/// Strategy which spawns a new tokio task which drops the contained value.
-///
-/// This only works within the context of a Tokio runtime.
-/// (Dropping objects constructed with this strategy while no Tokio runtime is available
-/// will result in a panic!)
-///
-/// Since the overhead of creating new Tokio tasks is very small, this is really fast
-/// (at least from the perspective of the current task.)
-///
-/// Note that if dropping your value takes a very long time, you might be better off
-/// using [`TokioBlockingTaskStrategy`] instead. Benchmark!
-pub struct TokioTaskStrategy();
-impl BackdropStrategy for TokioTaskStrategy {
-    #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
-        tokio::task::spawn(async move {
-            core::mem::drop(droppable);
-        });
-    }
-}
-
-pub type TokioTaskBackdrop<T> = Backdrop<T, TokioTaskStrategy>;
-
-/// Strategy which spawns a new 'blocking' tokio task which drops the contained value.
-///
-/// This only works within the context of a Tokio runtime.
-/// (Dropping objects constructed with this strategy while no Tokio runtime is available
-/// will result in a panic!)
-///
-/// This strategy is similar to [`TokioTaskStrategy`] but uses [`tokio::task::spawn_blocking`]
-/// instead. This makes sure that the 'fast async tasks' thread pool can continue its normal work,
-/// because the drop work is passed to the 'ok to block here' thread pool.
-///
-/// Benchmark to find out which approach suits your scenario better!
-pub struct TokioBlockingTaskStrategy();
-impl BackdropStrategy for TokioBlockingTaskStrategy {
-    #[inline]
-    fn execute<T: Send + 'static>(droppable: T) {
-        tokio::task::spawn_blocking(move || core::mem::drop(droppable));
-    }
-}
-
-pub type TokioBlockingTaskBackdrop<T> = Backdrop<T, TokioBlockingTaskStrategy>;
 
 fn time(name: &'static str, f: impl FnOnce()) {
     let start = std::time::Instant::now();
@@ -286,7 +183,7 @@ fn time(name: &'static str, f: impl FnOnce()) {
     println!("{name}, took {:?}", end.duration_since(start));
 }
 
-const LEN: usize = 5_000_000_0;
+const LEN: usize = 5_000_000;
 
 fn setup() -> Box<[Box<str>]> {
     (0..LEN)
@@ -297,61 +194,61 @@ fn setup() -> Box<[Box<str>]> {
 
 fn main() {
     let boxed = setup();
+    let not_backdropped = boxed.clone();
     time("none", move || {
-        let boxed = boxed;
-        assert_eq!(boxed.len(), LEN);
+        assert_eq!(not_backdropped.len(), LEN);
         // Destructor runs here
     });
 
-    lazy_static::initialize(&TRASH_THREAD_HANDLE);
-    let backdropped: FakeBackdrop<_> = Backdrop::new(setup());
+    lazy_static::initialize(&crate::thread::TRASH_THREAD_HANDLE);
+    let backdropped: FakeBackdrop<_> = Backdrop::new(boxed.clone());
     time("fake backdrop", move || {
         assert_eq!(backdropped.len(), LEN);
         // Destructor runs here
     });
 
-    let backdropped: ThreadBackdrop<_> = Backdrop::new(setup());
+    let backdropped: thread::ThreadBackdrop<_> = Backdrop::new(boxed.clone());
     time("thread backdrop", move || {
         assert_eq!(backdropped.len(), LEN);
         // Destructor runs here
     });
 
-    let backdropped: TrashThreadBackdrop<_> = Backdrop::new(setup());
+    let backdropped: thread::TrashThreadBackdrop<_> = Backdrop::new(boxed.clone());
     time("trash thread backdrop", move || {
         assert_eq!(backdropped.len(), LEN);
         // Destructor runs here
     });
 
-    tokio::runtime::Builder::new_multi_thread()
+    ::tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            let backdropped: TokioTaskBackdrop<_> = Backdrop::new(setup());
+            let backdropped: crate::tokio::TokioTaskBackdrop<_> = Backdrop::new(boxed.clone());
             time("tokio task (multithread runner)", move || {
                 assert_eq!(backdropped.len(), LEN);
                 // Destructor runs here
             });
 
-            let backdropped: TokioBlockingTaskBackdrop<_> = Backdrop::new(setup());
+            let backdropped: crate::tokio::TokioBlockingTaskBackdrop<_> = Backdrop::new(boxed.clone());
             time("tokio blocking task (multithread runner)", move || {
                 assert_eq!(backdropped.len(), LEN);
                 // Destructor runs here
             });
         });
 
-    tokio::runtime::Builder::new_current_thread()
+    ::tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            let backdropped: TokioTaskBackdrop<_> = Backdrop::new(setup());
+            let backdropped: crate::tokio::TokioTaskBackdrop<_> = Backdrop::new(setup());
             time("tokio task (current thread runner)", move || {
                 assert_eq!(backdropped.len(), LEN);
                 // Destructor runs here
             });
 
-            let backdropped: TokioBlockingTaskBackdrop<_> = Backdrop::new(setup());
+            let backdropped: crate::tokio::TokioBlockingTaskBackdrop<_> = Backdrop::new(setup());
             time("tokio blocking task (current thread runner)", move || {
                 assert_eq!(backdropped.len(), LEN);
                 // Destructor runs here

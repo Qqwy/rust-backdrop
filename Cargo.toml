@@ -7,4 +7,8 @@ edition = "2021"
 
 [dependencies]
 lazy_static = "1.4.0"
-tokio = { version = "1.25.0", features = ["sync", "rt", "full"] }
+tokio = { version = "1.25.0", features = ["sync", "rt", "full"], optional = true}
+
+[features]
+std = []
+default = ["std", "tokio"]
