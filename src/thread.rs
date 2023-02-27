@@ -5,11 +5,10 @@ use std::boxed::Box;
 
 use crate::{Backdrop, BackdropStrategy};
 
-/// Strategy which drops the contained value in a background thread.
+/// Strategy which drops the contained value in a newly spawned background thread.
 ///
-/// A new thread is spawned (using [`std::thread::spawn`])
-/// for every dropped value.
-/// This is conceptually very simple, but relatively slow since a new thread is spawned every time.
+/// A new thread is spawned (using [`std::thread::spawn`]) for every dropped value.
+/// This is conceptually very simple, but relatively slow since spawning a thread has overhead.
 pub struct ThreadStrategy();
 
 impl<T: Send + 'static> BackdropStrategy<T> for ThreadStrategy {
@@ -26,7 +25,7 @@ pub type ThreadBackdrop<T> = Backdrop<T, ThreadStrategy>;
 
 /// Handle that can be used to send trash to the 'trash thread' that runs in the background for the [`TrashThreadStrategy`].
 ///
-/// Only the global singleton [`static@TRASH_THREAD_HANDLE`] instance of this struct is used.
+/// Only the global singleton [`static@GLOBAL_TRASH_THREAD_HANDLE`] instance of this struct is used.
 pub struct GlobalTrashThreadHandle(std::sync::mpsc::SyncSender<Box<dyn Send>>);
 use lazy_static::lazy_static;
 lazy_static! {
@@ -52,7 +51,7 @@ lazy_static! {
 /// Strategy which sends any to-be-dropped values to a dedicated global 'trash thread'
 ///
 /// This trash thread is a global thread that is started using [`mod@lazy_static`].
-/// You probably want to control when it is started using [`lazy_static::initialize(&TRASH_THREAD_HANDLE)`]
+/// You probably want to control when it is started using [`lazy_static::initialize(&GLOBAL_TRASH_THREAD_HANDLE)`]
 /// (If you do not, it is started when it is used for the first time,
 /// meaning the very first drop will be slower.)
 ///

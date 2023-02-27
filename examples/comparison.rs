@@ -44,6 +44,17 @@ fn main() {
         });
     });
 
+    TrashQueueStrategy::ensure_initialized();
+    let backdropped = Backdrop::<_, TrashQueueStrategy>::new(boxed.clone());
+    time("(single threaded) trash queue backdrop", move || {
+        assert_eq!(backdropped.len(), LEN);
+        // Destructor runs here
+    });
+
+    time("(single threaded) trash queue backdrop (actually cleaning up later)", move || {
+        TrashQueueStrategy::cleanup_all();
+    });
+
     #[cfg(miri)]
     {
         println!("Skipping Tokio examples when running on Miri, since it does not support Tokio yet");

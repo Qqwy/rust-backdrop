@@ -13,5 +13,6 @@ lazy_static = { version = "1.4.0", optional = true }
 tokio = { version = "1.25.0", features = ["sync", "rt", "full"], optional = true}
 
 [features]
-std = ["lazy_static"]
+std = ["lazy_static", "alloc"]
+alloc = []
 default = ["std", "tokio"]

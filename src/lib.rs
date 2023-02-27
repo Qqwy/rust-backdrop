@@ -8,6 +8,15 @@
 //! which is a marker (zero-size compile-time only) type that implements the
 //! [`BackdropStrategy<T>`] trait.
 //!
+//! # Which strategy is best?
+//! This probably depends very much on your application! Be sure to benchmark!
+//! For general applications, the following are good starting recommendations:
+//! - [`TrashThreadStrategy`] if you are working on a normal application where multithreading is possible.
+//! - [`TokioTaskStrategy`] or [`TokioBlockingTaskStrategy`] if you are building an `async` application on top of the [`::tokio`] crate.
+//!
+//! Backdrop also ships with a bunch of 'simple testing' strategies ([`LeakStrategy`], [`TrivialStrategy`], [`DebugStrategy`], [`ThreadStrategy`]),
+//! that can help to understand how `backdrop` works, as leaning tool to build your own strategies, and as benchmarking baseline.
+//!
 //! # Features
 //! - You can disable the `std` feature (enabled by default) to use this trait in no-std contexts.
 //!   Without `std`, none of the [`thread`]-based strategies are available. The [`DebugStrategy`] is also disabled as it depends on `println`.
@@ -50,28 +59,80 @@ pub trait BackdropStrategy<T> {
     /// Called whenever `T` should be dropped.
     ///
     /// The trivial implementation (and indeed, [`TrivialStrategy`] is implemented this way)
-    /// is to do nothing. Then `T` will just directly be dropped right here, right now.
+    /// is to do nothing. Then `T` will just directly be dropped right here, right now, because it is passed by value:
+    ///
+    /// ```ignore
+    /// pub struct TrivialStrategy();
+    ///
+    /// impl<T> BackdropStrategy<T> for TrivialStrategy {
+    ///    fn execute(_droppable: T) {
+    ///    }
+    /// }
+    /// ```
+    /// Or, for clarity:
+    /// ```ignore
+    /// pub struct TrivialStrategy();
+    ///
+    /// impl<T> BackdropStrategy<T> for TrivialStrategy {
+    ///    fn execute(droppable: T) {
+    ///        core::mem::drop(droppable)
+    ///    }
+    /// }
+    /// ```
     ///
     /// But obviously that is not very exciting/helpful.
     /// Most implementations move the `T` to somewhere else somehow, and then it will be dropped there.
+    ///
+    /// To give you another example, here is how [`ThreadStrategy`] works:
+    /// ```ignore
+    /// pub struct ThreadStrategy();
+    ///
+    /// impl<T: Send + 'static> BackdropStrategy<T> for ThreadStrategy {
+    ///     fn execute(droppable: T) {
+    ///         std::thread::spawn(|| {
+    ///             core::mem::drop(droppable);
+    ///         });
+    ///     }
+    /// }
+    /// ````
     fn execute(droppable: T);
 }
 
 /// Wrapper to drop any value at a later time, such as in a background thread.
 ///
-/// `Backdrop<T>` is guaranteed to have the same in-memory representation as `T`.
-/// As such, it has zero memory overhead.
+/// `Backdrop<T, Strategy>` is guaranteed to have the same in-memory representation as `T`.
+/// As such, wrapping (and unwrapping) a `T` into a `Backdrop<T, S>` has zero memory overhead.
 ///
-/// Besides altering how `T` is dropped, a `Backdrop<T>` behaves as much as possible as a `T`.
+/// Besides altering how `T` is dropped, a `Backdrop<T, S>` behaves as much as possible as a `T`.
 /// This is done by implementing [`Deref`] and [`DerefMut`]
 /// so most methods available for `T` are also immediately available for `Backdrop<T>`.
-/// `Backdrop<T>` also implements many common traits whenever `T` implements these.
+/// `Backdrop<T, S>` also implements many common traits whenever `T` implements these.
+///
+/// # Customizing the strategy
+///
+/// You customize what strategy is used by picking your desired `S` parameter,
+/// which can be any type that implements the [`BackdropStrategy`] trait.
+/// This crate comes with many common strategies, but you can also implement your own.
 ///
 /// # Restrictions
 ///
-/// There are only two, highly logical, restrictions on the kinds of `T` that a `Backdrop<T>` can wrap:
-/// 1. `T` needs to be Send. Many strategies rely on moving the `T` to a different thread, to be dropped there.
-/// 2. `T` is not allowed to internally contain non-static references. Many strategies delay destruction to a later point in the future, when those references might have become invalid. (Moving to another thread also 'delays to the future' because code on that thread will not run in lockstep with our current thread.)
+/// `Backdrop<T, Strategy>` does not restrict `T` (besides `T` needing to be [`Sized`]). However,
+/// Many [`Strategy`](`BackdropStrategy<T>`) only implement [`BackdropStrategy<T>`] when `T` fits certain restrictions.
+/// For instance, the [`TrashThreadStrategy`] requires `T` to be `Send` since `T` will be moved to another thread to be cleaned up there.
+///
+/// What about [unsized/dynamically-sized](https://doc.rust-lang.org/nomicon/exotic-sizes.html) types? The current implementation of `Backdrop` restricts `T` to be [`Sized`] mostly for ease of implementation.
+/// It is our expectation that your unsized datastructures probably are already nested in a [`std::boxed::Box<T>`] or other smart pointer,
+/// which you can wrap with `Backdrop` as a whole.
+/// _(Side note: Zero-sized types can be wrapped by `Backdrop` without problems.)_
+///
+/// There is one final important restriction:
+/// ### The problem with Arc
+/// A `Backdrop<Arc<T>>` will not behave as you might expect:
+/// It will cause the backdrop strategy to run whenever the reference count is decremented.
+/// But what you probably want, is to run the backdrop strategy exactly when the last [`Arc<T>`][arc] is dropped
+/// (AKA when the reference count drops to 0) and the _contents_ of the [`Arc`][arc] go out of scope.
+///
+/// [arc]: std::sync::Arc
 #[repr(transparent)]
 pub struct Backdrop<T, S: BackdropStrategy<T>> {
     val: ManuallyDrop<T>,
@@ -79,10 +140,29 @@ pub struct Backdrop<T, S: BackdropStrategy<T>> {
 }
 
 impl<T, Strategy: BackdropStrategy<T>> Backdrop<T, Strategy> {
-    /// Construct a new [`Backdrop<T>`] from any T. This is a zero-cost operation.
+    /// Construct a new [`Backdrop<T, S>`] from any T. This is a zero-cost operation.
     ///
     /// From now on, T will no longer be dropped normally,
     /// but instead it will be dropped using the implementation of the given [`BackdropStrategy`].
+    ///
+    /// ```
+    /// use backdrop::*;
+    ///
+    /// // Either specify the return type:
+    /// let mynum: Backdrop<usize, LeakStrategy> = Backdrop::new(42);
+    ///
+    /// // Or use the 'Turbofish' syntax on the function call:
+    /// let mynum2 = Backdrop::<_, LeakStrategy>::new(42);
+    ///
+    /// // Or use one of the shorthand type aliases:
+    /// let mynum3 = LeakBackdrop::new(42);
+    ///
+    /// assert_eq!(mynum, mynum2);
+    /// assert_eq!(mynum2, mynum3);
+    /// // <- Because we are using the LeakStrategy, we leak memory here. Fun! :-)
+    /// ```
+    /// This function is the inverse of [`Backdrop::into_inner`].
+    ///
     #[inline]
     pub fn new(val: T) -> Self {
         Self {
@@ -91,9 +171,10 @@ impl<T, Strategy: BackdropStrategy<T>> Backdrop<T, Strategy> {
         }
     }
 
-    /// Turns a [`Backdrop<T>`] back into a normal T.
+    /// Turns a [`Backdrop<T, S>`] back into a normal T.
     /// This undoes the effect of Backdrop.
     /// The resulting T will be dropped again using normal rules.
+    /// This function is the inverse of [`Backdrop::new`].
     ///
     /// This is a zero-cost operation.
     ///
@@ -106,6 +187,24 @@ impl<T, Strategy: BackdropStrategy<T>> Backdrop<T, Strategy> {
             core::mem::forget(this);
             inner
         }
+    }
+
+    /// Changes the strategy used for a Backdrop.
+    ///
+    /// This is a zero-cost operation
+    ///
+    /// This is an associated function, so call it using fully-qualified syntax.
+    ///
+    /// ```
+    /// use backdrop::*;
+    ///
+    /// let foo = LeakBackdrop::new(42);
+    /// let foo = Backdrop::change_strategy::<TrivialStrategy>(foo);
+    /// // Now `foo` will be dropped according to TrivialStrategy (which does the normal drop rules)
+    /// // rather than LeakStrategy (which does not cleanup by leaking memory)
+    /// ```
+    pub fn change_strategy<S2: BackdropStrategy<T>>(this: Self) -> Backdrop<T, S2> {
+        Backdrop::<T, S2>::new(Backdrop::into_inner(this))
     }
 }
 
@@ -272,5 +371,107 @@ impl<T, InnerStrategy> BackdropStrategy<T> for DebugStrategy<InnerStrategy>
         use std::println;
         println!("Using BackdropStrategy '{}' to drop value {:?}", std::any::type_name::<InnerStrategy>(), &droppable);
         InnerStrategy::execute(droppable)
+    }
+}
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+#[cfg(feature = "alloc")]
+use alloc::{boxed::Box, collections::VecDeque};
+
+use core::cell::RefCell;
+use core::any::Any;
+
+#[cfg(feature = "std")]
+std::thread_local!{
+    static TRASH_QUEUE: RefCell<VecDeque<Box<dyn Any>>> = VecDeque::new().into();
+}
+
+// Fallback implementation for when std::thread_local! is not available
+#[cfg(not(feature = "std"))]
+static mut TRASH_QUEUE: core::cell::RefCell<VecDeque<Box<dyn core::any::Any>>> = VecDeque::new().into();
+
+// When std::thread_local! exists we can safely call the closure
+#[cfg(feature = "std")]
+fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<dyn Any>>>)) {
+    TRASH_QUEUE.with(|tq_cell| {
+        closure(tq_cell);
+    });
+}
+
+// In no_std contexts, we expect the program to run single-threaded
+// And we call the closure using unsafe in a best-effort basis.
+#[cfg(not(feature = "std"))]
+fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<dyn Any>>>)) {
+    closure(unsafe { TRASH_QUEUE });
+}
+
+/// Strategy which adds garbage to a global 'trash [`VecDeque`]'.
+///
+/// In `std` contexts, this trash queue is protected using [`std::thread_local!`].
+/// In `no_std` contexts, it is instead implemented as a [mutable static](https://doc.rust-lang.org/reference/items/static-items.html#mutable-statics) variable.
+///
+/// Perfectly fine for truly single-threaded applications.
+///
+/// This does mean that that if you do use some sort of 'alternative threading' in a `no_std` context, this strategy will be unsound!
+pub struct TrashQueueStrategy();
+
+#[cfg(feature = "std")]
+impl TrashQueueStrategy {
+    /// Makes sure the global (thread local) queue is initialized
+    /// If you do not call this, it will be initialized the first time an object is dropped,
+    /// which will add some overhead at that moment.
+    ///
+    /// Called automatically by [`cleanup_on_exit()`]
+    pub fn ensure_initialized() {
+        with_single_threaded_trash_queue(|_tq_cell| {});
+    }
+
+    /// Cleans up a single item in the trash queue.
+    ///
+    /// Returns `true` if there is more garbage in the queue at this moment.
+    /// That could be used to e.g. clean up 'some' garbage but not all.
+    pub fn cleanup_one() -> bool {
+        let mut queue_nonempty = false;
+        with_single_threaded_trash_queue(|tq_cell| {
+            let mut tq = tq_cell.borrow_mut();
+            let item = tq.pop_front();
+            core::mem::drop(item);
+            queue_nonempty = tq.is_empty();
+        });
+        queue_nonempty
+    }
+
+    /// Cleans up everything that is in the trash queue.
+    pub fn cleanup_all() {
+        with_single_threaded_trash_queue(|tq_cell| {
+            let mut tq = tq_cell.borrow_mut();
+            while let Some(item) = tq.pop_front() {
+                core::mem::drop(item);
+            }
+        });
+    }
+
+    /// Wrapper which will:
+    /// Call [`ensure_initialized()`] before your closure
+    /// Call [`cleanup_all()`] after your code.
+    ///
+    /// As such, you can use this to delay dropping until after your critical code section very easily:
+    pub fn cleanup_on_exit<R>(closure: impl FnOnce() -> R) -> R {
+        TrashQueueStrategy::ensure_initialized();
+        let outcome = closure();
+        TrashQueueStrategy::cleanup_all();
+        outcome
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T: 'static> BackdropStrategy<T> for TrashQueueStrategy {
+    fn execute(droppable: T) {
+        let boxed: Box<dyn core::any::Any> = Box::new(droppable);
+        with_single_threaded_trash_queue(|tq_cell| {
+            let mut tq = tq_cell.borrow_mut();
+            tq.push_back(boxed);
+        });
     }
 }
