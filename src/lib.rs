@@ -13,14 +13,18 @@
 //! For general applications, the following are good starting recommendations:
 //! - [`TrashThreadStrategy`] if you are working on a normal application where multithreading is possible.
 //! - [`TokioTaskStrategy`] or [`TokioBlockingTaskStrategy`] if you are building an `async` application on top of the [`::tokio`] crate.
+//! - [`TrashQueueStrategy`] if you are writing a single-threaded application.
 //!
 //! Backdrop also ships with a bunch of 'simple testing' strategies ([`LeakStrategy`], [`TrivialStrategy`], [`DebugStrategy`], [`ThreadStrategy`]),
 //! that can help to understand how `backdrop` works, as leaning tool to build your own strategies, and as benchmarking baseline.
 //!
 //! # Features
-//! - You can disable the `std` feature (enabled by default) to use this trait in no-std contexts.
-//!   Without `std`, none of the [`thread`]-based strategies are available. The [`DebugStrategy`] is also disabled as it depends on `println`.
-//!   You'll probably want to create your own strategy for your particular no-std situation.
+//! - You can disable the `std` feature (enabled by default) to use this crate in no-std contexts.
+//!   Without `std`, none of the [`thread`]-based strategies are available.
+//!   The [`DebugStrategy`] is also disabled as it depends on `println`.
+//! - As long as the `alloc` feature is not disabled (enabled by default; part of the `std` feature)
+//!   the single-threaded [`TrashQueueStrategy`] is still available to you.
+//!   If you also do not have access to `alloc` , you'll probably want to create your own strategy for your particular no-std situation.
 //! - You can enable the optional `tokio` feature to get access to strategies that drop on a background _tokio task_. (C.f. the [`tokio`] module)
 //!
 //! # Limitations
@@ -379,7 +383,9 @@ extern crate alloc;
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, collections::VecDeque};
 
+#[cfg(feature = "alloc")]
 use core::cell::RefCell;
+#[cfg(feature = "alloc")]
 use core::any::Any;
 
 #[cfg(feature = "std")]
@@ -388,7 +394,7 @@ std::thread_local!{
 }
 
 // Fallback implementation for when std::thread_local! is not available
-#[cfg(not(feature = "std"))]
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
 static mut TRASH_QUEUE: core::cell::RefCell<VecDeque<Box<dyn core::any::Any>>> = VecDeque::new().into();
 
 // When std::thread_local! exists we can safely call the closure
@@ -399,9 +405,9 @@ fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<d
     });
 }
 
-// In no_std contexts, we expect the program to run single-threaded
+// In no_std (but alloc) contexts, we expect the program to run single-threaded
 // And we call the closure using unsafe in a best-effort basis.
-#[cfg(not(feature = "std"))]
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
 fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<dyn Any>>>)) {
     closure(unsafe { TRASH_QUEUE });
 }
@@ -414,9 +420,10 @@ fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<d
 /// Perfectly fine for truly single-threaded applications.
 ///
 /// This does mean that that if you do use some sort of 'alternative threading' in a `no_std` context, this strategy will be unsound!
+#[cfg(feature = "alloc")]
 pub struct TrashQueueStrategy();
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 impl TrashQueueStrategy {
     /// Makes sure the global (thread local) queue is initialized
     /// If you do not call this, it will be initialized the first time an object is dropped,
@@ -465,7 +472,7 @@ impl TrashQueueStrategy {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 impl<T: 'static> BackdropStrategy<T> for TrashQueueStrategy {
     fn execute(droppable: T) {
         let boxed: Box<dyn core::any::Any> = Box::new(droppable);
