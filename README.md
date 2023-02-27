@@ -31,3 +31,40 @@ There are also some simple strategies included to learn from or to make benchmar
 - `ThreadStrategy`: Spawns a new full-blown OS thread for each dropped object. This has a big overhead, but this strategy can be a useful learning tool/starting point to write your own strategies.
 
 Of course, you can also very easily create your own!
+
+## Quick Example
+
+
+```rust
+use backdrop::*;
+
+{
+  // Either specify the return type:
+  let mynum: Backdrop<usize, LeakStrategy> = Backdrop::new(42);
+
+  // Or use the 'Turbofish' syntax on the function call:
+  let mynum2 = Backdrop::<_, LeakStrategy>::new(42);
+
+  // Or use one of the shorthand type aliases:
+  let mynum3 = LeakBackdrop::new(42);
+} // <- Because we are using the LeakStrategy, we leak memory here, rather than dropping. Fun! :-)
+```
+
+To see how much certain strategies might matter, consider running the `comparison` example in the repo on your machine
+(`cargo run --example comparison --features="tokio"`) which will try a bunch of included strategies to drop a large data structure (a `Box<[Box<str>; 5_000_000]>`):
+
+```
+none, took 99.785167ms
+fake backdrop, took 91.171125ms
+
+thread backdrop, took 184.708µs
+trash thread backdrop, took 22.333µs
+
+(single threaded) trash queue backdrop, took 21.542µs
+(single threaded) trash queue backdrop (actually cleaning up later), took 87.6455ms
+
+tokio task (multithread runner), took 33.875µs
+tokio blocking task (multithread runner), took 55.875µs
+tokio task (current thread runner), took 18.875µs
+tokio blocking task (current thread runner), took 63µs
+```

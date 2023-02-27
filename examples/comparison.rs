@@ -7,7 +7,7 @@ fn time(name: &'static str, f: impl FnOnce()) {
     println!("{name}, took {:?}", end.duration_since(start));
 }
 
-const LEN: usize = 5_000;
+const LEN: usize = 5_000_000;
 
 fn setup() -> Box<[Box<str>]> {
     (0..LEN)

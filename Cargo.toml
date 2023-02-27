@@ -19,7 +19,11 @@ tokio = { version = "1.25.0", features = ["sync", "rt", "full"], optional = true
 [features]
 std = ["lazy_static", "alloc"]
 alloc = []
-default = ["std", "tokio"]
+default = ["std"]
 
 [package.metadata.docs.rs]
 features = ["std", "tokio"]
+
+[[example]]
+name = "comparison"
+required-features = ["tokio"]
