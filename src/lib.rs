@@ -136,6 +136,8 @@ pub trait BackdropStrategy<T> {
 /// But what you probably want, is to run the backdrop strategy exactly when the last [`Arc<T>`][arc] is dropped
 /// (AKA when the reference count drops to 0) and the _contents_ of the [`Arc`][arc] go out of scope.
 ///
+/// Progress on a crate containing a dedicated 'BackdropArc' type is under way.
+///
 /// [arc]: std::sync::Arc
 #[repr(transparent)]
 pub struct Backdrop<T, S: BackdropStrategy<T>> {
