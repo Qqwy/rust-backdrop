@@ -5,8 +5,8 @@ edition = "2021"
 license = "MIT"
 authors = [ "Qqwy / Marten"]
 description = "Drop your large or complex objects in the background with Backdrop! (later, on another thread, or both! Fully customizable! Tokio supported!)"
-keywords = ["alloc", "drop", "cache", "box", "tokio", "thread", "async"]
-categories = ["no-std", "drop", "memory-management"]
+categories = ["alloc", "drop", "cache", "box", "tokio", "thread", "async"]
+keywords = ["alloc", "no_std", "drop", "memory-management"]
 readme = "README.md"
 repository = "https://github.com/qqwy/rust-backdrop"
 
