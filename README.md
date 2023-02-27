@@ -11,12 +11,12 @@
 <!-- [Rust 1.47]: https://blog.rust-lang.org/2020/10/08/Rust-1.47.html -->
 
 The `backdrop` crate allows you to customize when and how your values are dropped.
-The main entry point of this crate is the [`Backdrop<T, Strategy>`](https://docs.rs/backdrop/0.1.0/backdrop/struct.Backdrop.html) wrapper type.
+The main entry point of this crate is the [`Backdrop<T, Strategy>`](https://docs.rs/backdrop/latest/backdrop/struct.Backdrop.html) wrapper type.
 This will wrap any 'normal' type `T` with a zero-cost wrapper
 that customizes how it is dropped based on the given `Strategy`.
 
 `Strategy` is a marker (zero-size compile-time only) type that implements the
-[BackdropStrategy<T>](https://docs.rs/backdrop/0.1.0/backdrop/trait.BackdropStrategy.html) trait.
+[BackdropStrategy<T>](https://docs.rs/backdrop/latest/backdrop/trait.BackdropStrategy.html) trait.
 
 ## Builtin strategies
 
