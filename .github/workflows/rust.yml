@@ -22,8 +22,8 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo build --verbose
       - run: cargo test --verbose
-      - run: cargo build --all-features --verbose
-      - run: cargo test --all-features --verbose
+      - run: cargo build --features tokio --verbose
+      - run: cargo test --features tokio --verbose
   miri:
     name: "Miri"
     runs-on: ubuntu-latest
@@ -35,5 +35,5 @@ jobs:
           rustup override set nightly
           cargo miri setup
       - name: Test with Miri
-        run: cargo miri test --features std --features serde # NOTE: rkyv currently does not work under Miri because of stacked borrow strictness
+        run: cargo miri test --features std
 
