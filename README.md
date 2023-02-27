@@ -1,4 +1,14 @@
-# Backdrop
+# Backdrop &emsp; [![Latest Version]][crates.io] [![License]][license path]
+
+<!-- [![requires: rustc 1.47+]][Rust 1.47] -->
+
+
+[Latest Version]: https://img.shields.io/crates/v/backdrop.svg
+[crates.io]: https://crates.io/crates/backdrop
+[License]: https://img.shields.io/badge/license-MIT-blue.svg
+[license path]: https://github.com/qqwy/rust-backdrop/blob/main/LICENSE
+[requires: rustc 1.47+]: https://img.shields.io/badge/rustc-1.47+-lightgray.svg
+<!-- [Rust 1.47]: https://blog.rust-lang.org/2020/10/08/Rust-1.47.html -->
 
 The `backdrop` crate allows you to customize when and how your values are dropped.
 The main entry point of this crate is the [`Backdrop<T, Strategy>`](https://docs.rs/backdrop/0.1.0/backdrop/struct.Backdrop.html) wrapper type.
