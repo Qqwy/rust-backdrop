@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(doc_auto_cfg)]
+#![cfg_attr(feature = "doc", feature(doc_auto_cfg))]
 
 //! The `backdrop` crate allows you to customize when and how your values are dropped.
 //! The main entry point of this crate is the [`Backdrop<T, Strategy>`] wrapper type.
