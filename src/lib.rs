@@ -429,7 +429,7 @@ impl TrashQueueStrategy {
     /// If you do not call this, it will be initialized the first time an object is dropped,
     /// which will add some overhead at that moment.
     ///
-    /// Called automatically by [`cleanup_on_exit()`]
+    /// Called automatically by [`TrashQueueStrategy::cleanup_on_exit()`]
     pub fn ensure_initialized() {
         with_single_threaded_trash_queue(|_tq_cell| {});
     }
@@ -460,8 +460,9 @@ impl TrashQueueStrategy {
     }
 
     /// Wrapper which will:
-    /// Call [`ensure_initialized()`] before your closure
-    /// Call [`cleanup_all()`] after your code.
+    /// - Call [`TrashQueueStrategy::ensure_initialized()`] before your closure
+    /// - Call your closure
+    /// - Call [`TrashQueueStrategy::cleanup_all()`] after your closure.
     ///
     /// As such, you can use this to delay dropping until after your critical code section very easily:
     pub fn cleanup_on_exit<R>(closure: impl FnOnce() -> R) -> R {
