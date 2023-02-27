@@ -1,6 +1,24 @@
 #![no_std]
 #![feature(doc_auto_cfg)]
 
+//! The `backdrop` crate allows you to customize when and how your values are dropped.
+//! The main entry point of this crate is the [`Backdrop<T, Strategy>`] wrapper type.
+//! This will wrap any 'normal' type `T` with a zero-cost wrapper
+//! that customizes how it is dropped based on the given `Strategy`,
+//! which is a marker (zero-size compile-time only) type that implements the
+//! [`BackdropStrategy<T>`] trait.
+//!
+//! # Features
+//! - You can disable the `std` feature (enabled by default) to use this trait in no-std contexts.
+//!   Without `std`, none of the [`thread`]-based strategies are available. The [`DebugStrategy`] is also disabled as it depends on `println`.
+//!   You'll probably want to create your own strategy for your particular no-std situation.
+//! - You can enable the optional `tokio` feature to get access to strategies that drop on a background _tokio task_. (C.f. the [`tokio`] module)
+//!
+//! # Limitations
+//! `Backdrop<T, S>` implements the [`Deref`] and [`DerefMut`] traits, enabling you to use most methods available on `T` also on a `Backdrop<T>`.
+//! On top of this, a bunch of common traits have been implemented for `Backdrop<T, S>` whenever they are implemented for `T`.
+//! If something is missing that you really need, please open a PR and we can add it as an optional feature.
+
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -16,7 +34,6 @@ pub mod tokio;
 #[cfg(feature = "tokio")]
 #[doc(inline)]
 pub use crate::tokio::{TokioTaskBackdrop, TokioBlockingTaskBackdrop, TokioTaskStrategy, TokioBlockingTaskStrategy};
-
 
 
 use core::marker::PhantomData;
@@ -234,3 +251,26 @@ impl<T> BackdropStrategy<T> for LeakStrategy {
 
 pub type LeakBackdrop<T> = Backdrop<T, LeakStrategy>;
 
+
+/// 'Wrapper' strategy that prints out T when executed.
+///
+/// Takes another strategy as generic type argument.
+///
+/// The exact printed message is not considered a stable API;
+/// it is intended for human programmer eyes only.
+#[cfg(feature = "std")]
+pub struct DebugStrategy<InnerStrategy>(PhantomData<InnerStrategy>);
+
+#[cfg(feature = "std")]
+impl<T, InnerStrategy> BackdropStrategy<T> for DebugStrategy<InnerStrategy>
+    where
+    T: std::fmt::Debug,
+    InnerStrategy: BackdropStrategy<T>,
+{
+    #[inline]
+    fn execute(droppable: T) {
+        use std::println;
+        println!("Using BackdropStrategy '{}' to drop value {:?}", std::any::type_name::<InnerStrategy>(), &droppable);
+        InnerStrategy::execute(droppable)
+    }
+}

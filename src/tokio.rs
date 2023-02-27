@@ -22,6 +22,7 @@ impl<T: Send + 'static> BackdropStrategy<T> for TokioTaskStrategy {
     }
 }
 
+/// Convenient alias for a [`Backdrop`] that uses the [`TokioTaskStrategy`]
 pub type TokioTaskBackdrop<T> = Backdrop<T, TokioTaskStrategy>;
 
 /// Strategy which spawns a new 'blocking' tokio task which drops the contained value.
@@ -43,5 +44,6 @@ impl<T: Send + 'static> BackdropStrategy<T> for TokioBlockingTaskStrategy {
     }
 }
 
+/// Convenient alias for a [`Backdrop`] that uses the [`TokioBlockingTaskStrategy`]
 pub type TokioBlockingTaskBackdrop<T> = Backdrop<T, TokioBlockingTaskStrategy>;
 

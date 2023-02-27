@@ -21,6 +21,7 @@ impl<T: Send + 'static> BackdropStrategy<T> for ThreadStrategy {
     }
 }
 
+/// Convenient alias for a [`Backdrop`] that uses the [`ThreadStrategy`]
 pub type ThreadBackdrop<T> = Backdrop<T, ThreadStrategy>;
 
 /// Handle that can be used to send trash to the 'trash thread' that runs in the background for the [`TrashThreadStrategy`].
@@ -72,12 +73,13 @@ impl<T: Send + 'static> BackdropStrategy<T> for GlobalTrashThreadStrategy {
     }
 }
 
+/// Convenient alias for a [`Backdrop`] that uses the [`GlobalTrashThreadStrategy`]
 pub type GlobalTrashThreadBackdrop<T> = Backdrop<T, GlobalTrashThreadStrategy>;
 
 
 lazy_static! {
-    static ref TRASH_THREAD_HANDLE: std::sync::Mutex<Option<std::sync::mpsc::SyncSender<Box<dyn Send>>>> = {
-        std::sync::Mutex::new(None)
+    static ref TRASH_THREAD_HANDLE: std::sync::RwLock<Option<std::sync::mpsc::SyncSender<Box<dyn Send>>>> = {
+        std::sync::RwLock::new(None)
     };
 }
 
@@ -112,14 +114,14 @@ impl TrashThreadStrategy {
             }
         });
         let orig_handle = {
-            let mut handle = TRASH_THREAD_HANDLE.lock().unwrap();
+            let mut handle = TRASH_THREAD_HANDLE.write().unwrap();
             std::mem::replace(&mut *handle, Some(send))
         };
 
         let result = fun();
 
         {
-            let mut handle = TRASH_THREAD_HANDLE.lock().unwrap();
+            let mut handle = TRASH_THREAD_HANDLE.write().unwrap();
             // At this point the last 'send' handle is overwritten/dropped,
             // which should make the trash thread exit.
             *handle = orig_handle;
@@ -133,8 +135,9 @@ impl<T: Send + 'static> BackdropStrategy<T> for TrashThreadStrategy {
     #[inline]
     fn execute(droppable: T) {
         let handle = &TRASH_THREAD_HANDLE;
-        let _ = handle.lock().unwrap().as_ref().expect("No trash thread was started").send(Box::new(droppable));
+        let _ = handle.read().unwrap().as_ref().expect("No trash thread was started").send(Box::new(droppable));
     }
 }
 
+/// Convenient alias for a [`Backdrop`] that uses the [`TrashThreadStrategy`]
 pub type TrashThreadBackdrop<T> = Backdrop<T, TrashThreadStrategy>;
