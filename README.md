@@ -1,14 +1,12 @@
-# Backdrop &emsp; [![Latest Version]][crates.io] [![License]][license path]
-
-<!-- [![requires: rustc 1.47+]][Rust 1.47] -->
+# Backdrop &emsp; [![Latest Version]][crates.io] [![License]][license path] [![requires: rustc 1.56+]][Rust 1.56.1]
 
 
 [Latest Version]: https://img.shields.io/crates/v/backdrop.svg
 [crates.io]: https://crates.io/crates/backdrop
 [License]: https://img.shields.io/badge/license-MIT-blue.svg
 [license path]: https://github.com/qqwy/rust-backdrop/blob/main/LICENSE
-[requires: rustc 1.47+]: https://img.shields.io/badge/rustc-1.47+-lightgray.svg
-<!-- [Rust 1.47]: https://blog.rust-lang.org/2020/10/08/Rust-1.47.html -->
+[requires: rustc 1.56+]: https://img.shields.io/badge/rustc-1.56+-lightgray.svg
+[Rust 1.56.1]: https://rust-lang.org/
 
 The `backdrop` crate allows you to customize when and how your values are dropped.
 The main entry point of this crate is the [`Backdrop<T, Strategy>`](https://docs.rs/backdrop/latest/backdrop/struct.Backdrop.html) wrapper type.
@@ -73,3 +71,8 @@ tokio blocking task (current thread runner), took 63µs
 
 A `Backdrop<Arc<T>, S>` will not work as you expect. ([more info](https://docs.rs/backdrop/latest/backdrop/struct.Backdrop.html#the-problem-with-arc))
 Use the Arc from the [`backdrop_arc`](https://crates.io/crates/backdrop_arc) crate instead.
+
+## MSRV
+
+The Minimum Supported Rust Version of backdrop is Rust 1.56.1, because we use edition 2021 Rust syntax.
+There are no (required) Rust features or (required) dependencies, making this a very lightweight and portable crate.
