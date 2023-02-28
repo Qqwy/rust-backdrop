@@ -22,7 +22,7 @@ tokio = { version = "1.25.0", features = ["sync", "rt", "full"], optional = true
 std = ["lazy_static", "alloc"]
 alloc = []
 default = ["std"]
-doc = ["std", "tokio"] # <- Not for end users; Only used to enable nightly-only feature doc_auto_cfg when building documentation
+doc = ["std", "tokio", "rkyv", "bytecheck"] # <- Not for end users; Only used to enable nightly-only feature doc_auto_cfg when building documentation
 
 [package.metadata.docs.rs]
 features = ["doc"]
