@@ -18,7 +18,12 @@
 //! Backdrop also ships with a bunch of 'simple testing' strategies ([`LeakStrategy`], [`TrivialStrategy`], [`DebugStrategy`], [`ThreadStrategy`]),
 //! that can help to understand how `backdrop` works, as leaning tool to build your own strategies, and as benchmarking baseline.
 //!
+//! # Limitations
+//! `Backdrop<T, S>` implements the [`Deref`] and [`DerefMut`] traits, enabling you to use most methods available on `T` also on a `Backdrop<T>`.
+//! On top of this, a bunch of common traits have been implemented for `Backdrop<T, S>` whenever they are implemented for `T`.
+//!
 //! # Features
+//! ## Basic features
 //! - You can disable the `std` feature (enabled by default) to use this crate in no-std contexts.
 //!   Without `std`, none of the [`thread`]-based strategies are available.
 //!   The [`DebugStrategy`] is also disabled as it depends on `println`.
@@ -27,10 +32,12 @@
 //!   If you also do not have access to `alloc` , you'll probably want to create your own strategy for your particular no-std situation.
 //! - You can enable the optional `tokio` feature to get access to strategies that drop on a background _tokio task_. (C.f. the [`tokio`] module)
 //!
-//! # Limitations
-//! `Backdrop<T, S>` implements the [`Deref`] and [`DerefMut`] traits, enabling you to use most methods available on `T` also on a `Backdrop<T>`.
-//! On top of this, a bunch of common traits have been implemented for `Backdrop<T, S>` whenever they are implemented for `T`.
-//! If something is missing that you really need, please open a PR and we can add it as an optional feature.
+//! ## Using Backdrop with traits from other crates
+//! - `rkyv` enables `Archive`/`Serialize`/`Deserialize` support for `Backdrop<T, S>` iff they are implemented for `T`.
+//! - `bytecheck` enables `CheckBytes` support for `Backdrop<T, S>` iff implemented for `T`.
+//!
+//! Need support for something else? Please open a PR and we can add it as an optional feature.
+
 
 #[cfg(feature = "std")]
 extern crate std;
