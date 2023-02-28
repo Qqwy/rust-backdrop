@@ -68,3 +68,8 @@ tokio blocking task (multithread runner), took 55.875µs
 tokio task (current thread runner), took 18.875µs
 tokio blocking task (current thread runner), took 63µs
 ```
+
+## Arc
+
+A `Backdrop<Arc<T>, S>` will not work as you expect. ([more info](https://docs.rs/backdrop/latest/backdrop/struct.Backdrop.html#the-problem-with-arc))
+Use the Arc from the [`backdrop_arc`](https://crates.io/crates/backdrop_arc) crate instead.
