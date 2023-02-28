@@ -411,7 +411,7 @@ fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<d
 // And we call the closure using unsafe in a best-effort basis.
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<dyn Any>>>)) {
-    closure(unsafe { TRASH_QUEUE });
+    closure(unsafe { &TRASH_QUEUE });
 }
 
 /// Strategy which adds garbage to a global 'trash [`VecDeque`]'.
