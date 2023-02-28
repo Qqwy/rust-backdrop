@@ -397,7 +397,7 @@ std::thread_local!{
 
 // Fallback implementation for when std::thread_local! is not available
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
-static mut TRASH_QUEUE: core::cell::RefCell<VecDeque<Box<dyn core::any::Any>>> = VecDeque::new().into();
+static mut TRASH_QUEUE: Option<core::cell::RefCell<VecDeque<Box<dyn core::any::Any>>>> = None;
 
 // When std::thread_local! exists we can safely call the closure
 #[cfg(feature = "std")]
@@ -411,7 +411,11 @@ fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<d
 // And we call the closure using unsafe in a best-effort basis.
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 fn with_single_threaded_trash_queue(closure: impl FnOnce(&RefCell<VecDeque<Box<dyn Any>>>)) {
-    closure(unsafe { &TRASH_QUEUE });
+    let tq_ref = unsafe { &mut TRASH_QUEUE };
+    if tq_ref.is_none() {
+        *tq_ref = Some(VecDeque::new().into());
+    }
+    closure(unsafe { &TRASH_QUEUE.as_ref().unwrap() });
 }
 
 /// Strategy which adds garbage to a global 'trash [`VecDeque`]'.
