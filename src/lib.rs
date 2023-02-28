@@ -493,3 +493,41 @@ impl<T: 'static> BackdropStrategy<T> for TrashQueueStrategy {
         });
     }
 }
+
+#[cfg(feature = "rkyv")]
+impl<T: rkyv::Archive, S> rkyv::Archive for Backdrop<T, S>
+where
+    S: BackdropStrategy<T>,
+{
+    type Archived = rkyv::Archived<T>;
+    type Resolver = rkyv::Resolver<T>;
+    unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
+        self.deref().resolve(pos, resolver, out);
+    }
+}
+
+#[cfg(feature = "rkyv")]
+impl<Ser, T: rkyv::Archive + rkyv::Serialize<Ser>, S> rkyv::Serialize<Ser> for Backdrop<T, S>
+where
+    Ser: rkyv::Fallible,
+    S: BackdropStrategy<T>,
+{
+    fn serialize(&self, serializer: &mut Ser) -> Result<Self::Resolver, <Ser as rkyv::Fallible>::Error> {
+        self.deref().serialize(serializer)
+    }
+}
+
+
+#[cfg(feature = "rkyv")]
+impl<Des, T, S> rkyv::Deserialize<Backdrop<T, S>, Des> for rkyv::Archived<T>
+where
+    T: rkyv::Archive,
+    rkyv::Archived<T>: rkyv::Deserialize<T, Des>,
+    Des: rkyv::Fallible,
+    S: BackdropStrategy<T>,
+{
+    fn deserialize(&self, deserializer: &mut Des) -> Result<Backdrop<T, S>, <Des as rkyv::Fallible>::Error> {
+        let inner: T = self.deserialize(deserializer)?;
+        Ok(Backdrop::new(inner))
+    }
+}
