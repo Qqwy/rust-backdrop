@@ -131,12 +131,16 @@ pub trait BackdropStrategy<T> {
 ///
 /// There is one final important restriction:
 /// ### The problem with Arc
-/// A `Backdrop<Arc<T>>` will not behave as you might expect:
+/// A `Backdrop<Arc<T>, S>` will not behave as you might expect:
 /// It will cause the backdrop strategy to run whenever the reference count is decremented.
 /// But what you probably want, is to run the backdrop strategy exactly when the last [`Arc<T>`][arc] is dropped
 /// (AKA when the reference count drops to 0) and the _contents_ of the [`Arc`][arc] go out of scope.
 ///
-/// Progress on a crate containing a dedicated 'BackdropArc' type is under way.
+/// A `Arc<Backdrop<Box<T>, S>>` _will_ work as you expect, but you incur an extra pointer indirection (arc -> box -> T)
+/// every time you read its internal value.
+///
+/// Instead, use the [`backdrop_arc`](https://crates.io/crates/backdrop_arc) crate, which contains
+/// a specialized `Arc` datatype that does exactly what you want without a needless indirection.
 ///
 /// [arc]: std::sync::Arc
 #[repr(transparent)]
