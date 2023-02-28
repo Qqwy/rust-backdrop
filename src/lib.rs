@@ -531,3 +531,17 @@ where
         Ok(Backdrop::new(inner))
     }
 }
+
+#[cfg(feature = "bytecheck")]
+impl<C: ?Sized, T: bytecheck::CheckBytes<C>, S> bytecheck::CheckBytes<C> for Backdrop<T, S>
+where
+    S: BackdropStrategy<T>,
+{
+    type Error = <T as bytecheck::CheckBytes<C>>::Error;
+    unsafe fn check_bytes<'a>(value: *const Self, context: &mut C) -> Result<&'a Self, Self::Error>{
+        // SAFETY: Backdrop is repr(transparent) so this pointer cast is OK
+        let inner_ref = bytecheck::CheckBytes::check_bytes(value as *const T, context)?;
+        // SAFETY: Backdrop is repr(transparent) so this transmute is OK
+        Ok(core::mem::transmute(inner_ref))
+    }
+}
