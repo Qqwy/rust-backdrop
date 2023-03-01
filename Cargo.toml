@@ -1,6 +1,6 @@
 [package]
 name = "backdrop"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 license = "MIT"
 authors = [ "Qqwy / Marten"]
@@ -22,7 +22,7 @@ tokio = { version = "1.25.0", features = ["sync", "rt", "full"], optional = true
 std = ["lazy_static", "alloc"]
 alloc = []
 default = ["std"]
-doc = ["std", "tokio", "rkyv", "bytecheck"] # <- Not for end users; Only used to enable nightly-only feature doc_auto_cfg when building documentation
+doc = ["std", "tokio", "rkyv/size_32", "bytecheck"] # <- Not for end users; Only used to enable nightly-only feature doc_auto_cfg when building documentation
 
 [package.metadata.docs.rs]
 features = ["doc"]
